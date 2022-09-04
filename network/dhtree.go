@@ -72,8 +72,9 @@ func (t *dhtree) _sendTree() {
 // update adds a treeInfo to the spanning tree
 // it then fixes the tree (selecting a new parent, if needed) and the dht (restarting the bootstrap process)
 // if the info is from the current parent, then there's a delay before the tree/dht are fixed
-//  that prevents a race where we immediately switch to a new parent, who tries to do the same with us
-//  this avoids the tons of traffic generated when nodes race to use each other as parents
+//
+//	that prevents a race where we immediately switch to a new parent, who tries to do the same with us
+//	this avoids the tons of traffic generated when nodes race to use each other as parents
 func (t *dhtree) update(from phony.Actor, info *treeInfo, p *peer) {
 	t.Act(from, func() {
 		// The tree info should have been checked before this point
@@ -250,6 +251,8 @@ func (t *dhtree) _treeLookup(dest *treeLabel) *peer {
 		case dist > bestDist:
 		case treeLess(info.from(), best.from()):
 			isBetter = true
+		case info.from() == best.from() && info.hseq < best.hseq:
+			isBetter = true
 		}
 		if isBetter {
 			best = info
@@ -334,12 +337,26 @@ func (t *dhtree) _dhtLookup(dest publicKey, isBootstrap bool) *peer {
 	for _, info := range t.dinfos {
 		doDHT(info)
 	}
+	// If we have more than one connection to the same peer then finding the
+	// lower latency path is probably a better idea
+	if bestPeer != nil {
+		for p, info := range t.tinfos {
+			switch {
+			case p == nil || p == bestPeer:
+				continue
+			case p.key == bestPeer.key && info.hseq < bestPeer.info.hseq:
+				doUpdate(p.key, p, nil)
+			}
+		}
+	}
 	return bestPeer
 }
 
 // _dhtAdd adds a dhtInfo to the dht and returns true
 // it may return false if the path associated with the dhtInfo isn't allowed for some reason
-//  e.g. we know a better prev/next for one of the nodes in the path, which can happen if there's multiple split rings that haven't converged on their own yet
+//
+//	e.g. we know a better prev/next for one of the nodes in the path, which can happen if there's multiple split rings that haven't converged on their own yet
+//
 // as of writing, that never happens, it always adds and returns true
 func (t *dhtree) _dhtAdd(info *dhtInfo) bool {
 	// TODO? check existing paths, don't allow this one if the source/dest pair makes no sense
