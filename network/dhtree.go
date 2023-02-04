@@ -100,7 +100,6 @@ func (t *dhtree) update(from phony.Actor, info *treeInfo, p *peer) {
 			} else if info.root.equal(t.self.root) && info.seq <= t.self.seq {
 				doWait = true // same root and seq
 			}
-			t.self, t.parent = nil, nil // The old self/parent are now invalid
 			if doWait {
 				// FIXME this is a hack
 				//  We seem to busyloop if we process parent updates immediately
@@ -108,8 +107,10 @@ func (t *dhtree) update(from phony.Actor, info *treeInfo, p *peer) {
 				//  Then we get more bad news and switch again, etc...
 				// Set self to root, send, then process things correctly 1 second later
 				t.wait = true
+				oldSelf := t.self
 				t.self = &treeInfo{root: t.core.crypto.publicKey}
-				t._sendTree() // send bad news immediately
+				t._sendTree()    // send bad news immediately
+				t.self = oldSelf // keep the old state until the timeout
 				time.AfterFunc(peerTIMEOUT+time.Second, func() {
 					t.Act(nil, func() {
 						t.wait = false
@@ -118,6 +119,8 @@ func (t *dhtree) update(from phony.Actor, info *treeInfo, p *peer) {
 						t._doBootstrap()
 					})
 				})
+			} else {
+				t.self, t.parent = nil, nil // The old self/parent are now invalid
 			}
 		}
 		if !t.wait {
