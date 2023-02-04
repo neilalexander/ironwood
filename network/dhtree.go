@@ -100,6 +100,7 @@ func (t *dhtree) update(from phony.Actor, info *treeInfo, p *peer) {
 			} else if info.root.equal(t.self.root) && info.seq <= t.self.seq {
 				doWait = true // same root and seq
 			}
+			t.parent = nil
 			if doWait {
 				// FIXME this is a hack
 				//  We seem to busyloop if we process parent updates immediately
@@ -120,7 +121,7 @@ func (t *dhtree) update(from phony.Actor, info *treeInfo, p *peer) {
 					})
 				})
 			} else {
-				t.self, t.parent = nil, nil // The old self/parent are now invalid
+				t.self = nil
 			}
 		}
 		if !t.wait {
